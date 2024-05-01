@@ -1,0 +1,157 @@
+## LINKS
+# File to be analyzed: https://github.com/nthun/cocktail-balance/blob/master/cocktail_data.tsv
+# Instructions: ...
+
+```{r}
+library(readr)      # function(s): read_tsv
+library(data.table) # data.table type
+library(stringr)    # function(s): str_replace_all
+library(tidyr)      # function(s): separate_longer_delim
+library(dplyr)      # function(s): arrange, count, filter, n_distinct, rename
+```
+
+## 1. Read the data
+Read the cocktail dataset from: <https://github.com/nthun/cocktail-balance>
+
+```{r}
+my_data = read_tsv('C:/Users/Tatu/Desktop/Deanne - R programming/1_cocktail_bar/cocktail_data.tsv')
+my_data = data.table(my_data)
+```
+
+## 2. Transform the data table and clean the ingredient variable!
+The ingredients are currently in a single cell for each cocktail. It would be better to put them in separate rows. Also, the variable should be cleaned of all quantities (e.g. 1/2 oz, 2 dashes, etc.), and the indicator of alcohol content (e.g. 47.3% abv). You will need to use this cleaned table in later tasks.
+
+```{r}
+# some cleaning
+my_data$ingredients = as.character(my_data$ingredients) # cast to character (string) type
+my_data$ingredients = tolower(my_data$ingredients)      # cast everything to lowercase
+
+# there are some some typos in the columns
+my_data$ingredients = str_replace_all(my_data$ingredients, "<br>", "<br/>")            # lines 9 and 20
+my_data$ingredients = str_replace_all(my_data$ingredients, "cr\u008fme", "crème")      # line 17
+my_data$ingredients = str_replace_all(my_data$ingredients, "<b4/>", "<br/>")           # line 25
+my_data$ingredients = str_replace_all(my_data$ingredients, "marschino", "maraschino")  # line 25
+my_data$ingredients = str_replace_all(my_data$ingredients, "simple<", "simple syrup<") # line 54
+
+# TIDYR CHEATSHEET
+# https://github.com/rstudio/cheatsheets/blob/main/tidyr.pdf
+my_data = separate_longer_delim(my_data, ingredients, "<br/>") # create new rows based on line breaks indicated by "<br/>" inside the ingredients column
+my_data = separate_longer_delim(my_data, ingredients, " or ")  # to handle line 53
+
+# regex black magic which I love :)
+my_data$ingredients = str_replace_all(my_data$ingredients, "^ +", "") # remove leading whitespaces
+my_data$ingredients = str_replace_all(my_data$ingredients, " +$", "") # remove trailing whitespaces
+
+my_data$ingredients = str_replace_all(my_data$ingredients, " \\(\\d+% abv\\)", "")        # remove alcohol "(XX% abv)"
+my_data$ingredients = str_replace_all(my_data$ingredients, " \\(\\d+\\.\\d+% abv\\)", "") # remove alcohol " (XX.XX% abv)"
+
+my_data$ingredients = str_replace_all(my_data$ingredients, "\\d+ dash(es)? ", "") # remove "XX dash(es) "
+
+my_data$ingredients = str_replace_all(my_data$ingredients, "\\d+ drop(s)? ", "") # remove "XX drop(s) "
+
+my_data$ingredients = str_replace_all(my_data$ingredients, "\\d+ bsp ", "") # remove "XX bsp "
+
+my_data$ingredients = str_replace_all(my_data$ingredients, "\\d+\\.\\d+ oz ", "")    # remove "XX.XX oz "
+my_data$ingredients = str_replace_all(my_data$ingredients, "\\d+ \\d+/\\d+ oz ", "") # remove "XX XX/XX oz "
+my_data$ingredients = str_replace_all(my_data$ingredients, "\\d+/\\d+ oz ", "")      # remove "XX/XX oz "
+my_data$ingredients = str_replace_all(my_data$ingredients, "\\d+ oz ", "")           # remove "XX oz "
+
+my_data$ingredients = str_replace_all(my_data$ingredients, " +$", "") # remove trailing whitespaces again, because somewhere I messed up... -,-
+```
+
+## 3. All ingredients in alphabetical order
+Before opening the bar, you need to find a reliable supplier that has all the ingredients. You need to send a list of all possible ingredients you will need. They don't need the quantities (i.e. how many of these are needed), just the names of the ingredients.
+
+```{r}
+sort(unique(my_data$ingredients))
+```
+
+## 4. Number of unique ingredients
+How many different ingredients you will need?
+
+```{r}
+length(unique(my_data$ingredients))
+```
+
+## 5. What are the top 10 ingredients?
+What are the 10 most frequently used ingredients? If there are ties, you can list more than 10.
+
+```{r}
+top_10_ingredients = my_data %>%
+  count(ingredients) %>% # count the number of rows per ingredients => results in a new column called "n"
+  arrange(desc(n))       # sort column "n" in descending order, so the most used ingredients appear on the top
+
+head(top_10_ingredients$ingredients, 10)
+```
+
+## 6. Which cocktail(s) has/have the most ingredients?
+Count the number of ingredients and filter all the cocktails that has that many.
+
+```{r}
+cocktail_with_most_ingredients = my_data %>%
+  count(name) %>%        # count the number of rows per cocktail names => results in a new column called "n"
+  filter(n == max(n)) %>% # filter the table to only those rows which have the maximal value from "n"
+  select(name)
+
+cocktail_with_most_ingredients
+```
+
+## 7. How many ingredients appear in only one cocktail (rare ingredient)?
+Count all cocktails with only one ingredient
+
+```{r}
+rare_ingredients = my_data %>%
+  count(ingredients) %>%  # count the number of cocktails per ingredient => results in a new column called "n"
+  filter(n == 1)          # filter the table to only those ingredients which have only one cocktail count
+
+rare_ingredients = rare_ingredients$ingredients  # drop count column, keep ingredients only
+rare_ingredients
+```
+
+## 8. Which cocktail has an ingredient that is only used in one cocktail?
+
+```{r}
+cocktails_with_rare_ingredients = my_data %>%
+  filter(ingredients %in% rare_ingredients) 
+
+cocktails_with_rare_ingredients = cocktails_with_rare_ingredients$name
+cocktails_with_rare_ingredients
+```
+
+## 9. What are the cocktails without rare ingredients?
+
+```{r}
+cocktails_with_common_ingredients = my_data %>%
+  filter(name %notin% cocktails_with_rare_ingredients) %>%
+  distinct(name)
+
+cocktails_with_common_ingredients = cocktails_with_common_ingredients$name
+cocktails_with_common_ingredients
+```
+
+## 10. Create a cheat sheet for the bartender!
+
+Create a matrix that shows all cocktail names as rows and all ingredients as columns. When a cocktail requires an ingredient, there should be an "X" in the cell, otherwise, the cell should remain empty. Example:
+
+```{r echo=FALSE}
+tribble(~name, ~Lime, ~`White rum`, ~`Cane sugar`, ~`Coca-cola`, ~Mint, ~Soda,
+        "Caipirissima", "X", "X", "X", "", "", "",
+        "Cuba Libre", "X", "X", "", "X","","",
+        "Mojito", "X", "X", "", "", "X", "X") %>% 
+    relocate(name, sort(names(.)))
+```
+
+```{r}
+my_data$ingredients = str_replace_all(my_data$ingredients, " ", "_")
+my_data$mark = "X"
+
+cheatsheet = my_data %>%
+  select(name, ingredients, mark) %>%
+  pivot_wider(
+    names_from = ingredients,
+    values_from = mark
+  ) %>%
+  relocate(name, sort(names(.)))
+
+cheatsheet
+```
